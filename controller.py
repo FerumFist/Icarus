@@ -21,8 +21,6 @@ import datetime
 import socket
 import imagiz
 import cv2
-import sys
-import traceback
 from threading import Thread
 
 #########################################################################
@@ -36,17 +34,7 @@ PORT = 8888
 
 CONNECTED = False
 
-pygame.display.init()
-pygame.init()
 timestamp = str(datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d_%H-%M-%S_'))
-
-pygame.display.init()
-pygame.joystick.init()
-pygame.init()
-
-pygame.joystick.Joystick(1).init()  # Joystick
-pygame.joystick.Joystick(0).init()  # Throttle
-pygame.joystick.Joystick(2).init()  # Rudder
 
 def video_recv():
     server = imagiz.Server(port=8889)
@@ -84,10 +72,20 @@ def establish():
 
 def controlls():
 
+    global s
+
+    pygame.display.init()
+    pygame.joystick.init()
+    pygame.init()
+
+    pygame.joystick.Joystick(1).init()  # Joystick
+    pygame.joystick.Joystick(0).init()  # Throttle
+    pygame.joystick.Joystick(2).init()  # Rudder
+
     yt = 0  # roll trim
     zt = 0  # yaw trim
-    pt = 0
-    global s
+    pt = 0  # pitch trim
+
     while True:
 
         pygame.event.pump()
@@ -174,18 +172,15 @@ def controlls():
             z = -1
         if z > 1:
             z = 1
-        # Output the values
+        # Send the values
         cmd = 'X:' + '{:05.2f}'.format(x) + 'Y:' + '{:05.2f}'.format(y) + 'T:' + '{:05.2f}'.format(t) + 'Z:' + '{:05.2f}'.format(z)
-        print(cmd)
         try:
             s.send(bytes(cmd, 'utf-8'))
         except ConnectionResetError:
             s.shutdown(socket.SHUT_RDWR)
-            print('Connection dropped, trying to reconnect...')
-            # time.sleep(5)
+            print('Connection dropped, trying to reconnect.')
             establish()
-
-        # Limit sample rate
+        # Limit sample rate to avoid overflow / buffering
         time.sleep(0.04)
 
 

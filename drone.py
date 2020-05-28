@@ -26,20 +26,13 @@ import datetime
 import math
 import smbus
 from icm20948 import ICM20948
-import terminalplot as tp
 import numpy as np
-import matplotlib.pyplot as plt
-from imutils.video import WebcamVideoStream
-from scipy.signal import butter, filtfilt
-import asyncio
-
 
 imu = ICM20948()
 
-
-THROTTLE_SERVO  = 2
-ELEVATOR_SERVO  = 0
-YAW_SERVO       = 1
+THROTTLE_SERVO = 2
+ELEVATOR_SERVO = 0
+YAW_SERVO = 1
 AILERON_SERVO_1 = 3
 AILERON_SERVO_2 = 4
 
@@ -47,9 +40,9 @@ AIL_1 = 2150
 AIL_2 = 2150
 
 # DATA INIT
-start_time = time.time() # start time
-ds = 0 # data counter
-TELE = '' # telemetry
+start_time = time.time()  # start time
+ds = 0  # data counter
+TELE = ''  # telemetry
 
 # Initialize OpenCV lib for recording
 vid = cv2.VideoCapture(0)
@@ -74,13 +67,15 @@ ROL = 0
 YAW = 0
 THR = 0
 
-hdg_mean = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-heading  = 0
-pit_mean = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-c_pit  = 0
-rol_mean = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+hdg_mean = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+c_hdg = 0
+pit_mean = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+c_pit = 0
+rol_mean = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+c_rol = 0
+
 iter = 0
-c_rol  = 0
+
 
 # SERVO SHIT
 class PCA9685:
@@ -158,6 +153,7 @@ class PCA9685:
 
 pwm = PCA9685(0x40, debug=False)
 pwm.setPWMFreq(10)
+
 
 # VIDEO STREAMING
 
@@ -274,18 +270,10 @@ def receive_input(connection, max_buffer_size):
 
 
 def process_input(input_str):
-    global ds
-    global PIT
-    global ROL
-    global YAW
-    global THR
-    global AIL_1
-    global AIL_2
-    global hdg_iter
-    global heading
-    global rol_mean
+    global ds, PIT, ROL, YAW, THR, AIL_1, AIL_2
+    global hdg_mean, pit_mean, rol_mean
+    global c_hdg, c_pit, c_rol
     global iter
-    global pit_mean
     pi = 3.14159265359
 
     # Check size of input, if there is stutter and overflow just drop the frame
@@ -312,22 +300,21 @@ def process_input(input_str):
 
         # ROLL SERVO CONTROLL
         ROL_POS = (int(ROL * 13.25) * 100)
-        if ROL_POS < 0: # Negative - left roll
-          ROL = 2175 - abs(ROL_POS)
-          AIL_1 = ROL
-        if ROL_POS > 0: # Positive - right roll
-          ROL = ROL_POS + 2175
-          AIL_2 = ROL
+        if ROL_POS < 0:  # Negative - left roll
+            ROL = 2175 - abs(ROL_POS)
+            AIL_1 = ROL
+        if ROL_POS > 0:  # Positive - right roll
+            ROL = ROL_POS + 2175
+            AIL_2 = ROL
         if ROL_POS == 0:
-          AIL_1 = 2150
-          AIL_2 = 2150
+            AIL_1 = 2150
+            AIL_2 = 2150
 
         # YAW SERVO CONTROLL
         if YAW < 0:
             YAW_POS = int((YAW * 1250) - (-1250) + 850)
         if (YAW > 0) or (YAW == 0):
             YAW_POS = int((YAW * 1250) + 1250 + 850)
-
 
         pwm.setServoPulse(ELEVATOR_SERVO, PIT_POS)
         pwm.setServoPulse(THROTTLE_SERVO, THR_POS)
@@ -340,21 +327,20 @@ def process_input(input_str):
         ax, ay, az, gx, gy, gz = imu.read_accelerometer_gyro_data()
         mag_x, mag_y, mag_z = imu.read_magnetometer_data()
         # Calculate pitch, round down to two and swap axes, same with roll
-        pitch = round((180 * math.atan2(ax, math.sqrt(ay * ay + az * az)) / 3.14),2) * -1
-        roll  = round((180 * math.atan2(ay, math.sqrt(ax * ax + az * az)) / 3.14),2) * -1
+        pitch = round((180 * math.atan2(ax, math.sqrt(ay * ay + az * az)) / 3.14), 2) * -1
+        roll = round((180 * math.atan2(ay, math.sqrt(ax * ax + az * az)) / 3.14), 2) * -1
+
         # Compass is fuckered, can't figure out how to get heading from this IMU
-        hdg = 180*math.atan2(mag_x, mag_y)/pi
-
-        pit_mean[iter] = pitch
-        pitch = int(np.mean(pit_mean))
-
-        rol_mean[iter] = roll
-        roll = int(np.mean(rol_mean))
-
+        hdg = 180 * math.atan2(mag_x, mag_y) / pi
         hdg_mean[iter] = hdg
         hdg_act = np.mean(hdg_mean)
         if hdg_act < 0:
-          hdg_act += 360
+            hdg_act += 360
+
+        pit_mean[iter] = pitch
+        pitch = int(np.mean(pit_mean))
+        rol_mean[iter] = roll
+        roll = int(np.mean(rol_mean))
 
         if iter < 20:
             iter += 1
@@ -365,12 +351,9 @@ def process_input(input_str):
 
 
 def main():
-    #asyncio.run(start_stream())
     Thread(target=start_stream, daemon=False).start()
     Thread(target=start_server, daemon=False).start()
 
 
 if __name__ == "__main__":
     main()
-
-
