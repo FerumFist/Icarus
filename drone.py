@@ -76,6 +76,9 @@ c_rol = 0
 
 iter = 0
 
+HOST = '10.102.162.205'
+PORT = 8888
+CONNECTED = False
 
 # SERVO SHIT
 class PCA9685:
@@ -349,6 +352,24 @@ def process_input(input_str):
 
         return proc
 
+def establish():
+    global CONNECTED
+    global s
+    established = False
+
+    if CONNECTED:
+        s.close()
+    else:
+        CONNECTED = True
+
+    while not established:
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.connect((HOST, PORT))
+            established = True
+        except ConnectionRefusedError:
+            print('Reconnecting...')
 
 def main():
     Thread(target=start_stream, daemon=False).start()

@@ -31,7 +31,6 @@ print('#######################################')
 
 HOST = '10.102.162.205'
 PORT = 8888
-
 CONNECTED = False
 
 timestamp = str(datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d_%H-%M-%S_'))
@@ -49,7 +48,80 @@ def video_recv():
         cv2.imshow("", frame)
         cv2.waitKey(1)
 
+# # # # # # TELEMETRY RECVR # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+def start_server():
+    host = "0.0.0.0"  # listen on all interfaces
+    port = 8888  # command and controll port
 
+    soc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    soc.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # SO_REUSEADDR to reuse socket dropped to TIME_WAIT state
+    print("Socket created")
+
+    try:
+        soc.bind((host, port))
+    except:
+        print("Bind failed. Error : " + str(sys.exc_info()))
+        sys.exit()
+
+    soc.listen(1)  # queue up to 5 requests
+    print("Waiting for controller connection...")
+
+    # infinite loop- do not reset for every requests
+    while True:
+        connection, address = soc.accept()
+        ip, port = str(address[0]), str(address[1])
+        print("Connected with " + ip + ":" + port)
+
+        try:
+            Thread(target=client_thread, args=(connection, ip, port)).start()
+        except:
+            print("Thread did not start.")
+            traceback.print_exc()
+
+    soc.close()
+
+
+def client_thread(connection, ip, port, max_buffer_size=5120):
+    is_active = True
+
+    while is_active:
+        try:
+            client_input = receive_input(connection, max_buffer_size)
+
+            if "--QUIT--" in client_input:
+                print("Client is requesting to quit")
+                connection.close()
+                print("Connection " + ip + ":" + port + " closed")
+                is_active = False
+            else:
+                # print("{}".format(client_input))
+                st = datetime.datetime.fromtimestamp(time.time()).strftime('%H:%M:%S:%f ')
+                global TELE
+                f = open("blackbox.txt", "a")
+                f.write(st + client_input + '\t' + TELE + '\n')
+                f.close()
+                connection.sendall("-".encode("utf8"))
+        except ConnectionResetError:
+            print('Uplink dropped, waiting to re-establish...')
+            is_active = False
+
+
+def receive_input(connection, max_buffer_size):
+    client_input = connection.recv(max_buffer_size)
+    client_input_size = sys.getsizeof(client_input)
+
+    if client_input_size > max_buffer_size:
+        print("The input size is greater than expected {}".format(client_input_size))
+
+    decoded_input = client_input.decode("utf8").rstrip()  # decode and strip end of line
+    result = process_input(decoded_input)
+
+    return result
+
+def process_input(input_str):
+    rd = str(input_str).upper()
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 def establish():
     global CONNECTED
     global s
