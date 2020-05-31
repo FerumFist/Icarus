@@ -8,7 +8,6 @@ the plane which streams back to the controller. On local the image is OK with
 some lag but when used with wireguard the lag is quite bad, use with caution.
 
 TODO:
- - send telemetry back to controller
  - GPS
  - stabilization when you let go - keep heading and level flight
  - Some sort of GPS autopilot (Controller interface to enter waypoints or read them from json?)
@@ -28,57 +27,42 @@ import smbus
 from icm20948 import ICM20948
 import numpy as np
 
-imu = ICM20948()
-
-THROTTLE_SERVO = 2
-ELEVATOR_SERVO = 0
-YAW_SERVO = 1
+# Controller addressing
+CONTROLLER_IP = "10.102.162.242"
+CONTROLLER_TELE_PORT = 8888
+CONTROLLER_VIDEO_PORT = 8889
+# Servo addresses
+THROTTLE_SERVO  = 0
+ELEVATOR_SERVO  = 1
+YAW_SERVO       = 2
 AILERON_SERVO_1 = 3
 AILERON_SERVO_2 = 4
-
+# get rid of this
 AIL_1 = 2150
 AIL_2 = 2150
-
 # DATA INIT
 start_time = time.time()  # start time
 ds = 0  # data counter
 TELE = ''  # telemetry
-
-# Initialize OpenCV lib for recording
-vid = cv2.VideoCapture(0)
-vid.set(cv2.CAP_PROP_FPS, 100)
-client = imagiz.Client("cc1", server_ip="10.102.162.233", server_port=8889, request_retries=1000, request_timeout=10000)
-encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 10]
-
-# OSD
-font = cv2.FONT_HERSHEY_SIMPLEX
-BLC1 = (5, 475)
-BLC2 = (115, 475)
-BLC3 = (220, 475)
-BLC4 = (355, 475)
-BLC5 = (525, 475)
-UC = (290, 10)
-fontScale = 0.5
-fontColor = (255, 255, 255)
-lineType = 2
-# CTL SURFACES
+# Controll surface position
 PIT = 0
 ROL = 0
 YAW = 0
 THR = 0
-
-hdg_mean = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+# For smoothing sensor data
+hdg_mean = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 c_hdg = 0
-pit_mean = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+pit_mean = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 c_pit = 0
-rol_mean = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+rol_mean = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 c_rol = 0
+# Testing params only
+heading = 92
+GPS_LAT = 72.112
+GPS_LON = 112.317
+GPS_ALT = 721
 
 iter = 0
-
-HOST = '10.102.162.205'
-PORT = 8888
-CONNECTED = False
 
 # SERVO SHIT
 class PCA9685:
@@ -153,15 +137,29 @@ class PCA9685:
         pulse = pulse * 4096 / 20000  # PWM frequency is 50HZ,the period is 20000us
         self.setPWM(channel, 0, int(pulse))
 
-
-pwm = PCA9685(0x40, debug=False)
+imu = ICM20948()
+pwm = PCA9685()
 pwm.setPWMFreq(10)
 
-
 # VIDEO STREAMING
-
 def start_stream():
     global ds
+    # OSD
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    BLC1 = (5, 475)
+    BLC2 = (115, 475)
+    BLC3 = (220, 475)
+    BLC4 = (355, 475)
+    BLC5 = (525, 475)
+    UC = (290, 10)
+    fontScale = 0.5
+    fontColor = (255, 255, 255)
+    lineType = 2
+    vid = cv2.VideoCapture(0)
+    vid.set(cv2.CAP_PROP_FPS, 100)
+    client = imagiz.Client("cc1", server_ip=CONTROLLER_IP, server_port=CONTROLLER_VIDEO_PORT, request_retries=1000,
+                           request_timeout=10000)
+    encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 10]
     while True:
         # r = True
         # vs = WebcamVideoStream(src=0).start()
@@ -196,8 +194,8 @@ def start_stream():
             # Encode and send to socket
             r, image = cv2.imencode('.jpg', bw, encode_param)
             ds += round(sys.getsizeof(image), 4) / 1024 / 1024 / 8
-
             client.send(image)
+
         else:
             pass
 
@@ -231,8 +229,6 @@ def start_server():
             print("Thread did not start.")
             traceback.print_exc()
 
-    soc.close()
-
 
 def client_thread(connection, ip, port, max_buffer_size=5120):
     is_active = True
@@ -240,7 +236,6 @@ def client_thread(connection, ip, port, max_buffer_size=5120):
     while is_active:
         try:
             client_input = receive_input(connection, max_buffer_size)
-
             if "--QUIT--" in client_input:
                 print("Client is requesting to quit")
                 connection.close()
@@ -268,12 +263,11 @@ def receive_input(connection, max_buffer_size):
 
     decoded_input = client_input.decode("utf8").rstrip()  # decode and strip end of line
     result = process_input(decoded_input)
-
     return result
 
 
 def process_input(input_str):
-    global ds, PIT, ROL, YAW, THR, AIL_1, AIL_2
+    global ds, PIT, ROL, YAW, THR, AIL_1, AIL_2, GPS_LAT, GPS_LON, GPS_ALT
     global hdg_mean, pit_mean, rol_mean
     global c_hdg, c_pit, c_rol
     global iter
@@ -324,12 +318,10 @@ def process_input(input_str):
         pwm.setServoPulse(YAW_SERVO, YAW_POS)
         pwm.setServoPulse(AILERON_SERVO_1, AIL_1)
         pwm.setServoPulse(AILERON_SERVO_2, AIL_2)
-        print(YAW_POS)
 
         # Get raw acc + gyro and mag data from IMU
         ax, ay, az, gx, gy, gz = imu.read_accelerometer_gyro_data()
         mag_x, mag_y, mag_z = imu.read_magnetometer_data()
-        # Calculate pitch, round down to two and swap axes, same with roll
         pitch = round((180 * math.atan2(ax, math.sqrt(ay * ay + az * az)) / 3.14), 2) * -1
         roll = round((180 * math.atan2(ay, math.sqrt(ax * ax + az * az)) / 3.14), 2) * -1
 
@@ -340,40 +332,48 @@ def process_input(input_str):
         if hdg_act < 0:
             hdg_act += 360
 
+        # Average out sensor data for display
         pit_mean[iter] = pitch
         pitch = int(np.mean(pit_mean))
         rol_mean[iter] = roll
         roll = int(np.mean(rol_mean))
 
+        # Averaging + telemetry clock
         if iter < 20:
             iter += 1
-        if iter == 20:
+        elif iter == 20:
             iter = 0
-
+            et = time.time() - start_time  # MET
+            ct = datetime.datetime.now()
+            send_telemetry("MET=" + str(round(et, 2)) + str(pitch) + "," + str(roll) + "," + str(GPS_LAT) + "," +
+                      str(GPS_LON) + "," + str(GPS_ALT) + "Cycle= " + str(ct.strftime("%M:%S:%f")))
         return proc
 
-def establish():
-    global CONNECTED
+def send_telemetry(data):
+    try:
+        s.send(bytes(data, 'utf-8'))
+    except ConnectionResetError:
+        print('Connection dropped, trying to reconnect.')
+        establish_telemetry()
+
+def establish_telemetry():
     global s
     established = False
-
-    if CONNECTED:
-        s.close()
-    else:
-        CONNECTED = True
 
     while not established:
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            s.connect((HOST, PORT))
+            s.connect((CONTROLLER_IP, CONTROLLER_TELE_PORT))
             established = True
         except ConnectionRefusedError:
             print('Reconnecting...')
 
 def main():
+
     Thread(target=start_stream, daemon=False).start()
     Thread(target=start_server, daemon=False).start()
+    Thread(target=establish_telemetry, daemon=False).start()
 
 
 if __name__ == "__main__":

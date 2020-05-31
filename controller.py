@@ -21,6 +21,7 @@ import datetime
 import socket
 import imagiz
 import cv2
+import sys
 from threading import Thread
 
 #########################################################################
@@ -38,8 +39,8 @@ timestamp = str(datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d_
 def video_recv():
     server = imagiz.Server(port=8889)
     outname = timestamp + 'output.avi'
-    print('Session video output file: \n' + outname)
-    print('#######################################')
+    print('VID: Session video output file: \n' + outname)
+    print('#######################################\n')
     out = cv2.VideoWriter(outname, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 14, (640, 480))
     while True:
         message = server.receive()
@@ -55,27 +56,27 @@ def start_server():
 
     soc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     soc.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # SO_REUSEADDR to reuse socket dropped to TIME_WAIT state
-    print("Socket created")
+    print("TEL: Socket created")
 
     try:
         soc.bind((host, port))
     except:
-        print("Bind failed. Error : " + str(sys.exc_info()))
+        print("TEL: Bind failed. Error : " + str(sys.exc_info()))
         sys.exit()
 
     soc.listen(1)  # queue up to 5 requests
-    print("Waiting for controller connection...")
+    print("TEL: Waiting for drone telemetry...")
 
     # infinite loop- do not reset for every requests
     while True:
         connection, address = soc.accept()
         ip, port = str(address[0]), str(address[1])
-        print("Connected with " + ip + ":" + port)
+        print("TEL: Drone at:  " + ip + ":" + port)
 
         try:
             Thread(target=client_thread, args=(connection, ip, port)).start()
         except:
-            print("Thread did not start.")
+            print("TEL: Thread did not start.")
             traceback.print_exc()
 
     soc.close()
@@ -89,20 +90,16 @@ def client_thread(connection, ip, port, max_buffer_size=5120):
             client_input = receive_input(connection, max_buffer_size)
 
             if "--QUIT--" in client_input:
-                print("Client is requesting to quit")
+                print("TEL: Client is requesting to quit")
                 connection.close()
-                print("Connection " + ip + ":" + port + " closed")
+                print("TEL: Connection " + ip + ":" + port + " closed")
                 is_active = False
             else:
-                # print("{}".format(client_input))
+                print("TEL: "+"{}".format(client_input))
                 st = datetime.datetime.fromtimestamp(time.time()).strftime('%H:%M:%S:%f ')
-                global TELE
-                f = open("blackbox.txt", "a")
-                f.write(st + client_input + '\t' + TELE + '\n')
-                f.close()
                 connection.sendall("-".encode("utf8"))
         except ConnectionResetError:
-            print('Uplink dropped, waiting to re-establish...')
+            print('TEL: Telemetry dropped, waiting to re-establish...')
             is_active = False
 
 
@@ -111,15 +108,15 @@ def receive_input(connection, max_buffer_size):
     client_input_size = sys.getsizeof(client_input)
 
     if client_input_size > max_buffer_size:
-        print("The input size is greater than expected {}".format(client_input_size))
+        print("TEL: The input size is greater than expected {}".format(client_input_size))
 
     decoded_input = client_input.decode("utf8").rstrip()  # decode and strip end of line
     result = process_input(decoded_input)
-
     return result
 
 def process_input(input_str):
     rd = str(input_str).upper()
+    return rd
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 def establish():
@@ -139,7 +136,7 @@ def establish():
             s.connect((HOST, PORT))
             established = True
         except ConnectionRefusedError:
-            print('Reconnecting...')
+            print('CTL: Reconnecting...')
 
 
 def controlls():
@@ -150,9 +147,9 @@ def controlls():
     pygame.joystick.init()
     pygame.init()
 
-    pygame.joystick.Joystick(1).init()  # Joystick
+    """pygame.joystick.Joystick(1).init()  # Joystick
     pygame.joystick.Joystick(0).init()  # Throttle
-    pygame.joystick.Joystick(2).init()  # Rudder
+    pygame.joystick.Joystick(2).init()  # Rudder"""
 
     yt = 0  # roll trim
     zt = 0  # yaw trim
@@ -160,7 +157,7 @@ def controlls():
 
     while True:
 
-        pygame.event.pump()
+        """pygame.event.pump()
 
         # Init axes
         x = pygame.joystick.Joystick(1).get_axis(1)  # Pitch
@@ -246,11 +243,13 @@ def controlls():
             z = 1
         # Send the values
         cmd = 'X:' + '{:05.2f}'.format(x) + 'Y:' + '{:05.2f}'.format(y) + 'T:' + '{:05.2f}'.format(t) + 'Z:' + '{:05.2f}'.format(z)
+        """
+        cmd = "X:00.00Y:00.00T:00.30Z:00.00"
         try:
             s.send(bytes(cmd, 'utf-8'))
         except ConnectionResetError:
             s.shutdown(socket.SHUT_RDWR)
-            print('Connection dropped, trying to reconnect.')
+            print("CTL: " + 'Connection dropped, trying to reconnect.')
             establish()
         # Limit sample rate to avoid overflow / buffering
         time.sleep(0.04)
@@ -260,7 +259,7 @@ def main():
     Thread(target=establish, daemon=False).start()
     Thread(target=video_recv, daemon=False).start()
     Thread(target=controlls, daemon=False).start()
-    video_recv()
+    Thread(target=start_server, daemon=False).start()
 
 if __name__ == "__main__":
     main()
