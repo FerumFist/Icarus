@@ -8,12 +8,13 @@ the plane which streams back to the controller. On local the image is OK with
 some lag but when used with wireguard the lag is quite bad, use with caution.
 
 TODO:
- - send telemetry back to controller
- - GPS
- - stabilization when you let go - keep heading and level flight
- - Some sort of GPS autopilot (Controller interface to enter waypoints or read them from json?)
- - Redo video to keep lag under 500ms maybe stream it to a webpage?
- - optimize for speed
+ - GUI - video + telemetry data with interpretation ( art. horizon, map position overlay)
+ - ESC controlls - neeed to get an engine and an esc
+ - servo readback if possible - calibration mode
+ - config files for gamepads / joysticks - YAML
+ - config network - YAML
+ - phone controll to omit need for a gamepad altogether?
+
 """
 import pygame
 import time
@@ -147,9 +148,9 @@ def controlls():
     pygame.joystick.init()
     pygame.init()
 
-    """pygame.joystick.Joystick(1).init()  # Joystick
+    pygame.joystick.Joystick(1).init()  # Joystick
     pygame.joystick.Joystick(0).init()  # Throttle
-    pygame.joystick.Joystick(2).init()  # Rudder"""
+    pygame.joystick.Joystick(2).init()  # Rudder
 
     yt = 0  # roll trim
     zt = 0  # yaw trim
@@ -157,13 +158,13 @@ def controlls():
 
     while True:
 
-        """pygame.event.pump()
+        pygame.event.pump()
 
         # Init axes
         x = pygame.joystick.Joystick(1).get_axis(1)  # Pitch
         y = pygame.joystick.Joystick(1).get_axis(0)  # Roll
         t = pygame.joystick.Joystick(0).get_axis(2)  # Throttle
-        pt = pygame.joystick.Joystick(0).get_axis(4)  # Pitch trim
+        #pt = pygame.joystick.Joystick(0).get_axis(4)  # Pitch trim on the throttle wheel
         z = pygame.joystick.Joystick(2).get_axis(2) # Yaw
 
         j = pygame.joystick.Joystick(1)
@@ -196,8 +197,8 @@ def controlls():
                     pt = 0
 
         # Pitch trim deadzone
-        if abs(pt) < 0.03:
-            pt = 0
+        #if abs(pt) < 0.03:
+        #    pt = 0
 
         # Pitch
         if abs(x) < 0.035:
@@ -243,12 +244,14 @@ def controlls():
             z = 1
         # Send the values
         cmd = 'X:' + '{:05.2f}'.format(x) + 'Y:' + '{:05.2f}'.format(y) + 'T:' + '{:05.2f}'.format(t) + 'Z:' + '{:05.2f}'.format(z)
-        """
-        cmd = "X:00.00Y:00.00T:00.30Z:00.00"
+
         try:
             s.send(bytes(cmd, 'utf-8'))
-        except ConnectionResetError:
-            s.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            try:
+                s.shutdown(socket.SHUT_RDWR)
+            except:
+                continue
             print("CTL: " + 'Connection dropped, trying to reconnect.')
             establish()
         # Limit sample rate to avoid overflow / buffering

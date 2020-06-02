@@ -11,8 +11,15 @@ TODO:
  - GPS
  - stabilization when you let go - keep heading and level flight
  - Some sort of GPS autopilot (Controller interface to enter waypoints or read them from json?)
- - Redo video to keep lag under 500ms maybe stream it to a webpage?
- - optimize for speed
+ - Redo video to keep lag under 500ms maybe stream it to a webpage? - seems to be ok with pf - test over LTE network
+    - wireguard bottleneck probable
+ - optimize for speed, currently around 12Hz target 20Hz
+ - save video locally without the overlay
+ - write telemetry to file - this is to work around the fact when the controller connection drops we still need
+ - upon detecting a crash try to get as much sensor data as possible, push it to a websocket for recovery every 10s
+     - apart from this try to modulate beeping noise with motor controller not spinning the motor
+ - battery monitoring, also include in OSD
+
 """
 import socket
 import traceback
@@ -27,42 +34,64 @@ import smbus
 from icm20948 import ICM20948
 import numpy as np
 
-# Controller addressing
-CONTROLLER_IP = "10.102.162.242"
+CONTROLLER_IP = "10.102.162.233"
+#CONTROLLER_IP = "work.whonnock.sk"
 CONTROLLER_TELE_PORT = 8888
 CONTROLLER_VIDEO_PORT = 8889
-# Servo addresses
+
+imu = ICM20948()
+
 THROTTLE_SERVO  = 0
 ELEVATOR_SERVO  = 1
 YAW_SERVO       = 2
 AILERON_SERVO_1 = 3
 AILERON_SERVO_2 = 4
-# get rid of this
+
 AIL_1 = 2150
 AIL_2 = 2150
+
 # DATA INIT
 start_time = time.time()  # start time
 ds = 0  # data counter
+ds_mean = [0, 0, 0, 0, 0]
+ds_iter = 0
+
 TELE = ''  # telemetry
-# Controll surface position
+
+# Initialize OpenCV lib for recording
+
+
+# OSD
+font = cv2.FONT_HERSHEY_SIMPLEX
+BLC1 = (5, 475)
+BLC2 = (115, 475)
+BLC3 = (220, 475)
+BLC4 = (355, 475)
+BLC5 = (525, 475)
+UC = (290, 10)
+fontScale = 0.5
+fontColor = (255, 255, 255)
+lineType = 2
+# CTL SURFACES
 PIT = 0
 ROL = 0
 YAW = 0
 THR = 0
-# For smoothing sensor data
+
 hdg_mean = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 c_hdg = 0
 pit_mean = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 c_pit = 0
 rol_mean = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 c_rol = 0
-# Testing params only
+
+iter = 0
+
 heading = 92
 GPS_LAT = 72.112
 GPS_LON = 112.317
 GPS_ALT = 721
 
-iter = 0
 
 # SERVO SHIT
 class PCA9685:
@@ -137,48 +166,34 @@ class PCA9685:
         pulse = pulse * 4096 / 20000  # PWM frequency is 50HZ,the period is 20000us
         self.setPWM(channel, 0, int(pulse))
 
-imu = ICM20948()
 pwm = PCA9685()
 pwm.setPWMFreq(10)
 
 # VIDEO STREAMING
 def start_stream():
     global ds
-    # OSD
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    BLC1 = (5, 475)
-    BLC2 = (115, 475)
-    BLC3 = (220, 475)
-    BLC4 = (355, 475)
-    BLC5 = (525, 475)
-    UC = (290, 10)
-    fontScale = 0.5
-    fontColor = (255, 255, 255)
-    lineType = 2
+    global ds_mean
+    global ds_iter
     vid = cv2.VideoCapture(0)
-    vid.set(cv2.CAP_PROP_FPS, 100)
+    vid.set(cv2.CAP_PROP_FPS, 1000)
     client = imagiz.Client("cc1", server_ip=CONTROLLER_IP, server_port=CONTROLLER_VIDEO_PORT, request_retries=1000,
                            request_timeout=10000)
-    encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 10]
+    encode_param = [int(cv2.IMWRITE_JPEG_QUALITY),35]
     while True:
-        # r = True
-        # vs = WebcamVideoStream(src=0).start()
-        # frame = vs.read()
-        # frame = imutils.resize(frame, width=400)
         r, frame = vid.read()
         if r:
             et = time.time() - start_time  # MET
-            dss = ds / et  # Data rate
+            dss = np.mean(ds_mean) / 1024 / 8 / 10 # Data rate
             global heading
             global TELE
-
             # Construct overlay data
             eto = 'MET: ' + str(round(et, 2))
             br = 'DATA: ' + str(round(ds, 2)) + 'M'
             bat1 = 'SYSV: ' + '7.28'
             bat2 = 'ENGV:' + '13.93'
-            brr = 'RATE: ' + str(round(dss, 2)) + 'MB/s'
+            brr = 'RATE: ' + str(round(dss, 2)) + 'MBit/s'
             hdg = str(int(heading))
+            fps = str(vid.get(cv2.CAP_PROP_FPS))
             # Construct telemetry data - why the fuck here?
             TELE = eto + ' ' + bat1 + ' ' + bat2 + ' ' + br + ' ' + brr
             # Whack in the overlays
@@ -187,13 +202,18 @@ def start_stream():
             cv2.putText(frame, bat1, BLC2, font, fontScale, fontColor, lineType)
             cv2.putText(frame, bat2, BLC3, font, fontScale, fontColor, lineType)
             cv2.putText(frame, brr, BLC4, font, fontScale, fontColor, lineType)
-            cv2.putText(frame, hdg, UC, font, fontScale, fontColor, lineType)
-            # BW conversion - no data saved, may be used later for machine vision?
+            cv2.putText(frame, fps, UC, font, fontScale, fontColor, lineType)
+            # BW conversion - may be used later for machine vision - obstacle avoidance, terrain recog
             # bw = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
             bw = frame
             # Encode and send to socket
             r, image = cv2.imencode('.jpg', bw, encode_param)
-            ds += round(sys.getsizeof(image), 4) / 1024 / 1024 / 8
+            ds += round(sys.getsizeof(image), 4) / 1024 / 1024
+            ds_mean[ds_iter] = round(sys.getsizeof(image), 4)
+            if ds_iter < 5:
+                ds_iter += 1
+            if ds_iter >= 5:
+                ds_iter = 0
             client.send(image)
 
         else:
@@ -206,7 +226,7 @@ def start_server():
 
     soc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     soc.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # SO_REUSEADDR to reuse socket dropped to TIME_WAIT state
-    print("Socket created")
+    print("C&C socket created")
 
     try:
         soc.bind((host, port))
@@ -221,7 +241,7 @@ def start_server():
     while True:
         connection, address = soc.accept()
         ip, port = str(address[0]), str(address[1])
-        print("Connected with " + ip + ":" + port)
+        print("Controller downlink @ " + ip + ":" + port)
 
         try:
             Thread(target=client_thread, args=(connection, ip, port)).start()
@@ -237,9 +257,9 @@ def client_thread(connection, ip, port, max_buffer_size=5120):
         try:
             client_input = receive_input(connection, max_buffer_size)
             if "--QUIT--" in client_input:
-                print("Client is requesting to quit")
+                print("Controller disconnecting...")
                 connection.close()
-                print("Connection " + ip + ":" + port + " closed")
+                print("Controller @ " + ip + ":" + port + " closed")
                 is_active = False
             else:
                 # print("{}".format(client_input))
@@ -250,7 +270,7 @@ def client_thread(connection, ip, port, max_buffer_size=5120):
                 f.close()
                 connection.sendall("-".encode("utf8"))
         except ConnectionResetError:
-            print('Uplink dropped, waiting to re-establish...')
+            print('Controller downlink dropped, waiting to re-establish...')
             is_active = False
 
 
@@ -287,6 +307,7 @@ def process_input(input_str):
         YAW = float(proc[23:28])
 
         # PITCH SERVO CONTROLL
+        PIT_POS = 0
         if PIT < 0:
             PIT_POS = (PIT * 1250) - (-1250) + 850
         if (PIT > 0) | (PIT == 0):
@@ -308,6 +329,7 @@ def process_input(input_str):
             AIL_2 = 2150
 
         # YAW SERVO CONTROLL
+        YAW_POS = 0
         if YAW < 0:
             YAW_POS = int((YAW * 1250) - (-1250) + 850)
         if (YAW > 0) or (YAW == 0):
@@ -344,16 +366,15 @@ def process_input(input_str):
         elif iter == 20:
             iter = 0
             et = time.time() - start_time  # MET
-            ct = datetime.datetime.now()
             send_telemetry("MET=" + str(round(et, 2)) + str(pitch) + "," + str(roll) + "," + str(GPS_LAT) + "," +
-                      str(GPS_LON) + "," + str(GPS_ALT) + "Cycle= " + str(ct.strftime("%M:%S:%f")))
+                      str(GPS_LON) + "," + str(GPS_ALT))
         return proc
 
 def send_telemetry(data):
     try:
         s.send(bytes(data, 'utf-8'))
     except ConnectionResetError:
-        print('Connection dropped, trying to reconnect.')
+        print('Telemetry uplink disconnect, trying to reconnect...')
         establish_telemetry()
 
 def establish_telemetry():
@@ -366,8 +387,17 @@ def establish_telemetry():
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.connect((CONTROLLER_IP, CONTROLLER_TELE_PORT))
             established = True
+            print('Telemetry uplink established.')
         except ConnectionRefusedError:
-            print('Reconnecting...')
+            time.sleep(5)
+            print('Telemetry reconnecting...')
+
+def log_telemetry(tel_data):
+   pass
+
+def scream(addr):
+    pass
+
 
 def main():
 
@@ -378,3 +408,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
