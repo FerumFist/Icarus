@@ -1,0 +1,3 @@
+drone:
+  controll_address: 10.102.162.205
+  controll_port: 8888

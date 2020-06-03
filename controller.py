@@ -27,7 +27,7 @@ from threading import Thread
 
 #########################################################################
 print('#######################################')
-print("             Icarus v 0.1              ")
+print("             Icarus v 0.2              ")
 print('#######################################')
 #########################################################################
 
@@ -164,8 +164,8 @@ def controlls():
         x = pygame.joystick.Joystick(1).get_axis(1)  # Pitch
         y = pygame.joystick.Joystick(1).get_axis(0)  # Roll
         t = pygame.joystick.Joystick(0).get_axis(2)  # Throttle
-        #pt = pygame.joystick.Joystick(0).get_axis(4)  # Pitch trim on the throttle wheel
         z = pygame.joystick.Joystick(2).get_axis(2) # Yaw
+        #pt = pygame.joystick.Joystick(0).get_axis(4)  # Pitch trim on the throttle wheel
 
         j = pygame.joystick.Joystick(1)
         events = pygame.event.get()
