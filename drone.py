@@ -34,9 +34,10 @@ import numpy as np
 from servoctl import PCA9685
 from baro import *
 
-CONTROLLER_IP = "10.102.162.233"
+CONTROLLER_IP = "10.102.162.242"
+# CONTROLLER_IP = "10.253.0.3"
 CONTROLLER_TELE_PORT = 8888
-CONTROLLER_VIDEO_PORT = 8889
+CONTROLLER_VIDEO_PORT = 8890
 
 imu = ICM20948()
 
@@ -69,16 +70,16 @@ BLC4 = (355, 475)
 BLC5 = (525, 475)
 LC1 = (5, 15)
 LC2 = (5, 35)
+LC3 = (5, 55)
 UC = (290, 10)
 fontScale = 0.5
-fontColor = (255, 255, 255)
+fontColor = (5, 50, 255)
 lineType = 2
 # CTL SURFACES
 PIT = 0
 ROL = 0
 YAW = 0
 THR = 0
-
 
 pit_mean = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 c_pit = 0
@@ -104,8 +105,8 @@ def start_stream():
     vid = cv2.VideoCapture(0)
     vid.set(cv2.CAP_PROP_FPS, 1000)
     client = imagiz.Client("cc1", server_ip=CONTROLLER_IP, server_port=CONTROLLER_VIDEO_PORT, request_retries=100000,
-                           request_timeout=100000)
-    encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 35]
+                           request_timeout=5000)
+    encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 80]
     while True:
         r, frame = vid.read()
         pd = ''
@@ -119,16 +120,17 @@ def start_stream():
             bat1 = 'SYSV: ' + '7.28'
             bat2 = 'ENGV:' + '13.93'
             bit = 'RATE: ' + str(round(dss, 2)) + 'MBit/s'
+            alt = 'ALT   : ' + str(round(altitude, 2)) + " m"
 
             if c_pit < 0:
-                pd = 'PITCH D: '
+                pd = 'PIT  D: '
             if c_pit >= 0:
-                pd = 'PITCH U: '
+                pd = 'PIT  U: '
 
             if c_rol < 0:
-                rd = 'ROLL L: '
+                rd = 'ROL L: '
             if c_rol >= 0:
-                rd = 'ROLL R: '
+                rd = 'ROL R: '
 
             pitc = pd + str(round(c_pit, 2))
             roll = rd + str(round(c_rol, 2))
@@ -140,7 +142,7 @@ def start_stream():
             cv2.putText(frame, bit, BLC4, font, fontScale, fontColor, lineType)
             cv2.putText(frame, pitc, LC1, font, fontScale, fontColor, lineType)
             cv2.putText(frame, roll, LC2, font, fontScale, fontColor, lineType)
-
+            cv2.putText(frame, alt, LC3, font, fontScale, fontColor, lineType)
             # Encode and send to socket
             r, image = cv2.imencode('.jpg', frame, encode_param)
             ds += round(sys.getsizeof(image), 4) / 1024 / 1024
@@ -276,7 +278,6 @@ def process_input(input_str):
         pwm.setServoPulse(AILERON_SERVO_1, AIL_1)
         pwm.setServoPulse(AILERON_SERVO_2, AIL_2)
 
-
         return proc
 
 
@@ -288,8 +289,12 @@ def send_telemetry():
             time.sleep(1)
         except ConnectionResetError:
             print('Telemetry uplink disconnect, trying to reconnect...')
-            establish_telemetry()
             time.sleep(1)
+            establish_telemetry()
+        except BrokenPipeError:
+            print('General failure, reconnecting...')
+            time.sleep(1)
+            establish_telemetry()
 
 
 def establish_telemetry():
@@ -314,8 +319,9 @@ def log_telemetry():
 
     while True:
         et = time.time() - start_time  # MET
-        TELE = 'ET=' + str(round(et, 2)) + ',PITCH=' + str(c_pit) + ',ROLL=' + str(c_rol)\
-               + ',ALT' + str(round(altitude, 2))
+        TELE = 'ET=' + str(round(et, 2)) + ',PITCH=' + str(c_pit) + ',ROLL=' + str(c_rol) \
+               + ',ALT=' + str(round(altitude, 2))
+        # print(TELE)
         try:
             f = open("blackbox.txt", "a")
             f.write(TELE + '\n')
@@ -324,6 +330,7 @@ def log_telemetry():
             print('Telemetry saving error!')
 
         time.sleep(0.05)
+
 
 def gyro():
     global iter
@@ -349,15 +356,16 @@ def gyro():
         roll = int(np.mean(rol_mean))
 
         # Averaging + telemetry clock
-        if iter < 20:
+        if iter < 21:
             iter += 1
             c_rol = round(float(np.mean(rol_mean)), 2)
             c_pit = round(float(np.mean(pit_mean)), 2)
-        elif iter == 20:
+        elif iter == 21:
             iter = 0
             if calibrated == False:
                 print('Gyro calibrated...')
                 calibrated = True
+
 
 def baro():
     PRESS_DATA = 0.0
@@ -383,12 +391,12 @@ def baro():
             TEMP_DATA = ((u8Buf[1] << 8) + u8Buf[0]) / 100.0
         tempK = round((TEMP_DATA + 273.15), 2)
         if calibrated == False:
-            if cal_iter < 10:
+            if cal_iter < 20:
                 p0t += PRESS_DATA
                 cal_iter += 1
-            if cal_iter == 10:
+            if cal_iter == 20:
                 calibrated = True
-                p0 = p0t / 10
+                p0 = p0t / 20
                 print("Altimeter calibrated...")
         if calibrated == True:
             global altitude
@@ -413,7 +421,6 @@ def main():
     Thread(target=establish_telemetry, daemon=False).start()
     time.sleep(1)
     Thread(target=send_telemetry, daemon=False).start()
-
 
 
 if __name__ == "__main__":

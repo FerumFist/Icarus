@@ -11,9 +11,8 @@ TODO:
  - GUI - video + telemetry data with interpretation ( art. horizon, map position overlay)
  - ESC controlls - neeed to get an engine and an esc
  - servo readback if possible - calibration mode
- - config files for gamepads / joysticks - YAML
- - config network - YAML
- - phone controll to omit need for a gamepad altogether?
+ - config file to bind joystick, gamepad and network
+ - baro sensor altitude correction from GPS - needed due to possible pressure change
 
 """
 import pygame
@@ -24,6 +23,14 @@ import imagiz
 import cv2
 import sys
 from threading import Thread
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+from matplotlib import style
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+import random
+from threading import Thread
+import time
 
 #########################################################################
 print('#######################################')
@@ -31,14 +38,29 @@ print("             Icarus v 0.2              ")
 print('#######################################')
 #########################################################################
 
-HOST = '10.102.162.205'
+HOST = '10.102.162.218'
 PORT = 8888
 CONNECTED = False
 
 timestamp = str(datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d_%H-%M-%S_'))
+start_time = time.time()
+
+telelap = 0
+telepit = 0
+telerol = 0
+telealt = 0
+
+# Create figure for plotting
+fig1 = plt.figure()
+ax1 = fig1.add_subplot(1, 1, 1)
+xs1 = []
+ys1 = []
+
+alt = 0
+
 
 def video_recv():
-    server = imagiz.Server(port=8889)
+    server = imagiz.Server(port=8890)
     outname = timestamp + 'output.avi'
     print('VID: Session video output file: \n' + outname)
     print('#######################################\n')
@@ -96,7 +118,20 @@ def client_thread(connection, ip, port, max_buffer_size=5120):
                 print("TEL: Connection " + ip + ":" + port + " closed")
                 is_active = False
             else:
-                print("TEL: "+"{}".format(client_input))
+                curr_time = round((time.time() -start_time), 1)
+                global telealt, telerol, telepit, teleelap
+                try:
+                    telesplit = client_input.split(",")
+                    teleelapt  = telesplit[0].split("=")
+                    teleelap   = float(teleelapt[1])
+                    telepitct  = telesplit[1].split("=")
+                    telepitc   = float(telepitct[1])
+                    telerolt   = telesplit[2].split("=")
+                    telerol    = float(telerolt[1])
+                    telealtt   = telesplit[3].split("=")
+                    telealt    = round(float(telealtt[1]),2)
+                except:
+                    pass
                 st = datetime.datetime.fromtimestamp(time.time()).strftime('%H:%M:%S:%f ')
                 connection.sendall("-".encode("utf8"))
         except ConnectionResetError:
@@ -119,16 +154,39 @@ def process_input(input_str):
     rd = str(input_str).upper()
     return rd
 
+
+def animate(i, xs1, ys1):
+    global telealt, ax1, fig1
+    # Read temperature (Celsius) from TMP102
+
+    # Add x and y to lists
+    xs1.append(datetime.datetime.now().strftime('%S'))
+    ys1.append(telealt)
+
+    # Limit x and y lists to 20 items
+    xs1 = xs1[-100:]
+    ys1 = ys1[-100:]
+
+    # Draw x and y lists
+    ax1.clear()
+    ax1.plot(xs1, ys1   )
+
+    # Format plot
+    plt.xticks(rotation=90, ha='right')
+    plt.subplots_adjust(bottom=0.30)
+    plt.title('Altitude over time')
+    plt.ylabel('Altitude in meters')
+
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 def establish():
     global CONNECTED
     global s
     established = False
 
-    if CONNECTED:
+    try:
         s.close()
-    else:
-        CONNECTED = True
+    except:
+        pass
 
     while not established:
         try:
@@ -136,6 +194,7 @@ def establish():
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.connect((HOST, PORT))
             established = True
+            print('CTL: Connected - drone @ ' + str(s.getpeername()[0]) + ',' + str(s.getpeername()[1]))
         except ConnectionRefusedError:
             print('CTL: Reconnecting...')
 
@@ -148,9 +207,9 @@ def controlls():
     pygame.joystick.init()
     pygame.init()
 
-    pygame.joystick.Joystick(1).init()  # Joystick
+    """pygame.joystick.Joystick(1).init()  # Joystick
     pygame.joystick.Joystick(0).init()  # Throttle
-    pygame.joystick.Joystick(2).init()  # Rudder
+    pygame.joystick.Joystick(2).init()  # Rudder"""
 
     yt = 0  # roll trim
     zt = 0  # yaw trim
@@ -158,7 +217,7 @@ def controlls():
 
     while True:
 
-        pygame.event.pump()
+        """pygame.event.pump()
 
         # Init axes
         x = pygame.joystick.Joystick(1).get_axis(1)  # Pitch
@@ -242,12 +301,15 @@ def controlls():
             z = -1
         if z > 1:
             z = 1
-        # Send the values
-        cmd = 'X:' + '{:05.2f}'.format(x) + 'Y:' + '{:05.2f}'.format(y) + 'T:' + '{:05.2f}'.format(t) + 'Z:' + '{:05.2f}'.format(z)
+        # Send the values"""
+        #cmd = 'X:' + '{:05.2f}'.format(x) + 'Y:' + '{:05.2f}'.format(y) + 'T:' + '{:05.2f}'.format(t) + 'Z:' + '{:05.2f}'.format(z)
+        cmd = 'X:' + '{:05.2f}'.format(0) + 'Y:' + '{:05.2f}'.format(1) + 'T:' + '{:05.2f}'.format(
+            2) + 'Z:' + '{:05.2f}'.format(3)
+
 
         try:
             s.send(bytes(cmd, 'utf-8'))
-        except OSError:
+        except:
             try:
                 s.shutdown(socket.SHUT_RDWR)
             except:
@@ -255,14 +317,27 @@ def controlls():
             print("CTL: " + 'Connection dropped, trying to reconnect.')
             establish()
         # Limit sample rate to avoid overflow / buffering
-        time.sleep(0.04)
+        time.sleep(0.08)
 
 
 def main():
-    Thread(target=establish, daemon=False).start()
+    global line
+    global telepitc
+    global st
+
     Thread(target=video_recv, daemon=False).start()
+    time.sleep(2)
+    Thread(target=establish, daemon=False).start()
+    time.sleep(1)
     Thread(target=controlls, daemon=False).start()
+    time.sleep(1)
     Thread(target=start_server, daemon=False).start()
+
+    while True:
+        global xs1, ys1, fig1
+        ani = animation.FuncAnimation(fig1, animate, fargs=(xs1, ys1), interval=1000)
+        plt.show()
 
 if __name__ == "__main__":
     main()
+
