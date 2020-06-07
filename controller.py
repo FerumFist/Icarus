@@ -13,7 +13,7 @@ TODO:
  - servo readback if possible - calibration mode
  - config file to bind joystick, gamepad and network
  - baro sensor altitude correction from GPS - needed due to possible pressure change
-
+ - optimize this fucking mess, some OOP?
 """
 import pygame
 import time
@@ -160,12 +160,12 @@ def animate(i, xs1, ys1):
     # Read temperature (Celsius) from TMP102
 
     # Add x and y to lists
-    xs1.append(datetime.datetime.now().strftime('%S'))
+    xs1.append(datetime.datetime.now().strftime('%M:%S'))
     ys1.append(telealt)
 
     # Limit x and y lists to 20 items
-    xs1 = xs1[-100:]
-    ys1 = ys1[-100:]
+    xs1 = xs1[-600:]
+    ys1 = ys1[-600:]
 
     # Draw x and y lists
     ax1.clear()
@@ -332,11 +332,10 @@ def main():
     Thread(target=controlls, daemon=False).start()
     time.sleep(1)
     Thread(target=start_server, daemon=False).start()
-
-    while True:
-        global xs1, ys1, fig1
-        ani = animation.FuncAnimation(fig1, animate, fargs=(xs1, ys1), interval=1000)
-        plt.show()
+    time.sleep(2)
+    global xs1, ys1, fig1
+    ani = animation.FuncAnimation(fig1, animate, fargs=(xs1, ys1), interval=1000)
+    plt.show()
 
 if __name__ == "__main__":
     main()

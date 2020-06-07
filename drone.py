@@ -9,14 +9,19 @@ some lag but when used with wireguard the lag is quite bad, use with caution.
 
 TODO:
  - GPS
- - stabilization when you let go - keep heading and level flight
+ - stabilization on network disconnect - keep heading and altitude
+    - if battery bellow 20% and disonnect, rth or slow down and land (add image processing or lidar clearance sensor?)
  - Some sort of GPS autopilot (Controller interface to enter waypoints or read them from json?)
  - Keep video lag under 500ms
-    - wireguard bottleneck probable
- - write telemetry to file - this is to work around the fact when the controller connection drops we still need
+    - wireguard bottleneck ruled out - it was the mobile hotspot. field test when able.
+ - write telemetry to file - this is to work around the fact when the controller connection drops we still need some
+   sort of black box
  - upon detecting a crash try to get as much sensor data as possible, push it to a websocket for recovery every 10s
-     - apart from this try to modulate beeping noise with motor controller not spinning the motor
- - battery monitoring, also include in OSD
+     - apart from this try to modulate beeping noise with motor controller not spinning the motor as not to shred the
+       rotors or wing or whatever
+ - battery monitoring, also include in OSD, current monitoring with available hall effect sensors, build a voltage
+   divider to get the, you guessed it, voltage on one of the analog pins.
+ - optimize this fucking mess, some OOP?
 
 """
 import socket
