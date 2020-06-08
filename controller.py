@@ -50,12 +50,6 @@ telepit = 0
 telerol = 0
 telealt = 0
 
-# Create figure for plotting
-fig1 = plt.figure()
-ax1 = fig1.add_subplot(1, 1, 1)
-xs1 = []
-ys1 = []
-
 alt = 0
 
 
@@ -155,28 +149,6 @@ def process_input(input_str):
     return rd
 
 
-def animate(i, xs1, ys1):
-    global telealt, ax1, fig1
-    # Read temperature (Celsius) from TMP102
-
-    # Add x and y to lists
-    xs1.append(datetime.datetime.now().strftime('%M:%S'))
-    ys1.append(telealt)
-
-    # Limit x and y lists to 20 items
-    xs1 = xs1[-600:]
-    ys1 = ys1[-600:]
-
-    # Draw x and y lists
-    ax1.clear()
-    ax1.plot(xs1, ys1   )
-
-    # Format plot
-    plt.xticks(rotation=90, ha='right')
-    plt.subplots_adjust(bottom=0.30)
-    plt.title('Altitude over time')
-    plt.ylabel('Altitude in meters')
-
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 def establish():
     global CONNECTED
@@ -206,29 +178,46 @@ def controlls():
     pygame.display.init()
     pygame.joystick.init()
     pygame.init()
+    (width, height) = (300, 200)
+    screen = pygame.display.set_mode((width, height))
+    pygame.display.flip()
 
-    """pygame.joystick.Joystick(1).init()  # Joystick
+    """
+    pygame.joystick.Joystick(1).init()  # Joystick
     pygame.joystick.Joystick(0).init()  # Throttle
-    pygame.joystick.Joystick(2).init()  # Rudder"""
+    pygame.joystick.Joystick(2).init()  # Rudder
+    """
 
     yt = 0  # roll trim
     zt = 0  # yaw trim
     pt = 0  # pitch trim
+    ql = 50  # video quality (JPEG compression on cv2 1-99)
 
     while True:
 
-        """pygame.event.pump()
+        pygame.event.pump()
 
+        """
         # Init axes
         x = pygame.joystick.Joystick(1).get_axis(1)  # Pitch
         y = pygame.joystick.Joystick(1).get_axis(0)  # Roll
         t = pygame.joystick.Joystick(0).get_axis(2)  # Throttle
         z = pygame.joystick.Joystick(2).get_axis(2) # Yaw
-        #pt = pygame.joystick.Joystick(0).get_axis(4)  # Pitch trim on the throttle wheel
+
 
         j = pygame.joystick.Joystick(1)
+        """
         events = pygame.event.get()
+
         for event in events:
+
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_LCTRL:
+                    ql -= 5
+                if event.key == pygame.K_LALT:
+                    ql += 5
+
+            """
             if event.type == pygame.JOYBUTTONDOWN:
 
                 # ROLL TRIM #
@@ -301,10 +290,12 @@ def controlls():
             z = -1
         if z > 1:
             z = 1
-        # Send the values"""
-        #cmd = 'X:' + '{:05.2f}'.format(x) + 'Y:' + '{:05.2f}'.format(y) + 'T:' + '{:05.2f}'.format(t) + 'Z:' + '{:05.2f}'.format(z)
+        """
+        # Send the values
+        #cmd = 'X:' + '{:05.2f}'.format(x) + 'Y:' + '{:05.2f}'.format(y) + 'T:' + '{:05.2f}'.format(
+        #    t) + 'Z:' + '{:05.2f}'.format(z) + 'Q:' + str(ql)
         cmd = 'X:' + '{:05.2f}'.format(0) + 'Y:' + '{:05.2f}'.format(1) + 'T:' + '{:05.2f}'.format(
-            2) + 'Z:' + '{:05.2f}'.format(3)
+            2) + 'Z:' + '{:05.2f}'.format(3) + 'Q:' + str(ql)
 
 
         try:
@@ -333,9 +324,7 @@ def main():
     time.sleep(1)
     Thread(target=start_server, daemon=False).start()
     time.sleep(2)
-    global xs1, ys1, fig1
-    ani = animation.FuncAnimation(fig1, animate, fargs=(xs1, ys1), interval=1000)
-    plt.show()
+
 
 if __name__ == "__main__":
     main()
