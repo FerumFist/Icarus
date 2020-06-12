@@ -23,11 +23,7 @@ import imagiz
 import cv2
 import sys
 from threading import Thread
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
-from matplotlib import style
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
+
 import random
 from threading import Thread
 import time
@@ -38,7 +34,7 @@ print("             Icarus v 0.2              ")
 print('#######################################')
 #########################################################################
 
-HOST = '10.102.162.218'
+HOST = '10.102.162.248'
 PORT = 8888
 CONNECTED = False
 
@@ -167,7 +163,7 @@ def establish():
             s.connect((HOST, PORT))
             established = True
             print('CTL: Connected - drone @ ' + str(s.getpeername()[0]) + ',' + str(s.getpeername()[1]))
-        except ConnectionRefusedError:
+        except :
             print('CTL: Reconnecting...')
 
 
@@ -182,11 +178,11 @@ def controlls():
     screen = pygame.display.set_mode((width, height))
     pygame.display.flip()
 
-    """
+
     pygame.joystick.Joystick(1).init()  # Joystick
     pygame.joystick.Joystick(0).init()  # Throttle
     pygame.joystick.Joystick(2).init()  # Rudder
-    """
+
 
     yt = 0  # roll trim
     zt = 0  # yaw trim
@@ -197,7 +193,7 @@ def controlls():
 
         pygame.event.pump()
 
-        """
+
         # Init axes
         x = pygame.joystick.Joystick(1).get_axis(1)  # Pitch
         y = pygame.joystick.Joystick(1).get_axis(0)  # Roll
@@ -206,7 +202,7 @@ def controlls():
 
 
         j = pygame.joystick.Joystick(1)
-        """
+
         events = pygame.event.get()
 
         for event in events:
@@ -217,7 +213,7 @@ def controlls():
                 if event.key == pygame.K_LALT:
                     ql += 5
 
-            """
+
             if event.type == pygame.JOYBUTTONDOWN:
 
                 # ROLL TRIM #
@@ -290,12 +286,12 @@ def controlls():
             z = -1
         if z > 1:
             z = 1
-        """
+
         # Send the values
-        #cmd = 'X:' + '{:05.2f}'.format(x) + 'Y:' + '{:05.2f}'.format(y) + 'T:' + '{:05.2f}'.format(
-        #    t) + 'Z:' + '{:05.2f}'.format(z) + 'Q:' + str(ql)
-        cmd = 'X:' + '{:05.2f}'.format(0) + 'Y:' + '{:05.2f}'.format(1) + 'T:' + '{:05.2f}'.format(
-            2) + 'Z:' + '{:05.2f}'.format(3) + 'Q:' + str(ql)
+        cmd = 'X:' + '{:05.2f}'.format(x) + 'Y:' + '{:05.2f}'.format(y) + 'T:' + '{:05.2f}'.format(
+            t) + 'Z:' + '{:05.2f}'.format(z) + 'Q:' + str(ql)
+        #cmd = 'X:' + '{:05.2f}'.format(0) + 'Y:' + '{:05.2f}'.format(1) + 'T:' + '{:05.2f}'.format(
+        #    2) + 'Z:' + '{:05.2f}'.format(3) + 'Q:' + str(ql)
 
 
         try:
